@@ -2,10 +2,15 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { IncidentType, Severity } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+// Use environment variable or empty string (will fail gracefully)
+const apiKey = import.meta.env.VITE_API_KEY || import.meta.env.API_KEY || '';
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 export const geminiService = {
   analyzeIncident: async (description: string, type: IncidentType) => {
+    if (!ai) {
+      throw new Error('API key not configured');
+    }
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: `Analyze the following emergency incident report:
@@ -39,6 +44,9 @@ export const geminiService = {
 
   checkDuplicates: async (newDescription: string, existingReports: {id: string, description: string}[]) => {
     if (existingReports.length === 0) return null;
+    if (!ai) {
+      throw new Error('API key not configured');
+    }
 
     const reportList = existingReports.map(r => `[ID: ${r.id}] ${r.description}`).join('\n');
     

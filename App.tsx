@@ -52,33 +52,84 @@ const App: React.FC = () => {
   };
 
   const handleReportSubmit = async (data: { type: IncidentType; description: string; location: LocationData; mediaUrl?: string }) => {
-    // 1. Check for duplicates using AI
-    const duplicateId = await geminiService.checkDuplicates(
-      data.description, 
-      incidents.slice(0, 10).map(i => ({ id: i.id, description: i.description }))
-    );
+    try {
+      // 1. Check for duplicates using AI (with fallback)
+      let duplicateId: string | null = null;
+      try {
+        duplicateId = await geminiService.checkDuplicates(
+          data.description, 
+          incidents.slice(0, 10).map(i => ({ id: i.id, description: i.description }))
+        );
+      } catch (error) {
+        console.warn('Duplicate check failed, using fallback:', error);
+        // Hardcoded fallback: simple text matching for duplicates
+        const similarReport = incidents.find(inc => 
+          inc.description.toLowerCase().includes(data.description.toLowerCase().substring(0, 20)) ||
+          data.description.toLowerCase().includes(inc.description.toLowerCase().substring(0, 20))
+        );
+        duplicateId = similarReport?.id || null;
+      }
 
-    // 2. Analyze severity using AI
-    const analysis = await geminiService.analyzeIncident(data.description, data.type);
+      // 2. Analyze severity using AI (with fallback)
+      let analysis = { severity: Severity.MEDIUM, isLikelyFalse: false, summary: data.description };
+      try {
+        analysis = await geminiService.analyzeIncident(data.description, data.type);
+      } catch (error) {
+        console.warn('Severity analysis failed, using fallback:', error);
+        // Hardcoded fallback: determine severity based on incident type
+        const severityMap: Record<IncidentType, Severity> = {
+          [IncidentType.FIRE]: Severity.HIGH,
+          [IncidentType.MEDICAL]: Severity.HIGH,
+          [IncidentType.ACCIDENT]: Severity.MEDIUM,
+          [IncidentType.CRIME]: Severity.MEDIUM,
+          [IncidentType.INFRASTRUCTURE]: Severity.MEDIUM,
+          [IncidentType.OTHER]: Severity.LOW
+        };
+        analysis = {
+          severity: severityMap[data.type] || Severity.MEDIUM,
+          isLikelyFalse: false,
+          summary: data.description
+        };
+      }
 
-    const newIncident: Incident = {
-      id: crypto.randomUUID(),
-      type: data.type,
-      description: data.description,
-      location: data.location,
-      timestamp: Date.now(),
-      status: analysis.isLikelyFalse ? IncidentStatus.UNVERIFIED : IncidentStatus.UNVERIFIED,
-      severity: analysis.severity as Severity,
-      upvotes: 0,
-      reporterId: 'user-1',
-      mediaUrl: data.mediaUrl,
-      isDuplicateOf: duplicateId || undefined
-    };
+      const newIncident: Incident = {
+        id: crypto.randomUUID(),
+        type: data.type,
+        description: data.description,
+        location: data.location,
+        timestamp: Date.now(),
+        status: analysis.isLikelyFalse ? IncidentStatus.UNVERIFIED : IncidentStatus.UNVERIFIED,
+        severity: analysis.severity as Severity,
+        upvotes: 0,
+        reporterId: 'user-1',
+        mediaUrl: data.mediaUrl,
+        isDuplicateOf: duplicateId || undefined
+      };
 
-    storageService.saveIncident(newIncident);
-    setIncidents(prev => [newIncident, ...prev]);
-    showNotification('Report submitted successfully!');
-    setActiveTab('feed');
+      storageService.saveIncident(newIncident);
+      setIncidents(prev => [newIncident, ...prev]);
+      showNotification('Report submitted successfully!');
+      setActiveTab('feed');
+    } catch (error) {
+      console.error('Error submitting report:', error);
+      // Even if everything fails, still save the incident with default values
+      const newIncident: Incident = {
+        id: crypto.randomUUID(),
+        type: data.type,
+        description: data.description,
+        location: data.location,
+        timestamp: Date.now(),
+        status: IncidentStatus.UNVERIFIED,
+        severity: Severity.MEDIUM,
+        upvotes: 0,
+        reporterId: 'user-1',
+        mediaUrl: data.mediaUrl
+      };
+      storageService.saveIncident(newIncident);
+      setIncidents(prev => [newIncident, ...prev]);
+      showNotification('Report submitted successfully!');
+      setActiveTab('feed');
+    }
   };
 
   const handleUpvote = (id: string) => {
