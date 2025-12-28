@@ -1,0 +1,9 @@
+
+{
+  "name": "Anginat - Incident Response Platform",
+  "description": "A real-time incident reporting and resource coordination platform designed to bridge the gap between citizens and emergency responders. Features include AI-powered severity assessment, verification systems, and a dedicated responder dashboard.",
+  "requestFramePermissions": [
+    "camera",
+    "geolocation"
+  ]
+}
